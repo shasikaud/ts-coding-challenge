@@ -7,6 +7,7 @@ import {
   TopicCreateTransaction, TopicInfoQuery,
   TopicMessageQuery, TopicMessageSubmitTransaction,
   KeyList, Key,
+  TopicMessage,
 } from "@hashgraph/sdk";
 import { accounts } from "../../src/config";
 import assert from "node:assert";
@@ -98,4 +99,16 @@ When(/^The message "([^"]*)" is published to the topic$/, async function (messag
 });
 
 Then(/^The message "([^"]*)" is received by the topic and can be printed to the console$/, async function (message: string) {
+  new TopicMessageQuery()
+    .setTopicId(topicId)
+    .setStartTime(0)
+    .subscribe(client, onError, onMessage);
 });
+
+const onMessage = (message: TopicMessage) => {
+  console.log(`Received message: ${message.contents.toString()}`);
+};
+
+const onError = (message: TopicMessage | null, error: Error) => {
+  console.error(`Error: ${error.message}`);
+};
