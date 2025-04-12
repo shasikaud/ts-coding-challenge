@@ -1,36 +1,80 @@
 import { Given, Then, When } from "@cucumber/cucumber";
 import { accounts } from "../../src/config";
-import { AccountBalanceQuery, AccountId, Client, PrivateKey } from "@hashgraph/sdk";
+import { 
+  AccountBalanceQuery, 
+  AccountId, 
+  Client, 
+  PrivateKey,
+  TokenCreateTransaction,
+  TokenId,
+  TokenInfoQuery,
+} from "@hashgraph/sdk";
 import assert from "node:assert";
 
-const client = Client.forTestnet()
+const client = Client.forTestnet();
+
+let tokenId: TokenId;
+
+const accountsManager = (index: number) => {
+  const account = accounts[index];
+  const accountId = AccountId.fromString(account.id);
+  const privateKey = PrivateKey.fromStringED25519(account.privateKey);
+  const publicKey = privateKey.publicKey;
+  return {
+    accountId,
+    privateKey,
+    publicKey,
+  };
+};
+
+const setClientOperator = (index: number) => {
+  const { accountId, privateKey } = accountsManager(index);
+  client.setOperator(accountId, privateKey);
+  return {
+    accountId,
+    privateKey,
+  };
+};
 
 Given(/^A Hedera account with more than (\d+) hbar$/, async function (expectedBalance: number) {
-  const account = accounts[0]
-  const MY_ACCOUNT_ID = AccountId.fromString(account.id);
-  const MY_PRIVATE_KEY = PrivateKey.fromStringED25519(account.privateKey);
-  client.setOperator(MY_ACCOUNT_ID, MY_PRIVATE_KEY);
-
-//Create the query request
-  const query = new AccountBalanceQuery().setAccountId(MY_ACCOUNT_ID);
-  const balance = await query.execute(client)
+  const { accountId, privateKey } = setClientOperator(2);
+  const query = new AccountBalanceQuery().setAccountId(accountId);
+  const balance = await query.execute(client);
   assert.ok(balance.hbars.toBigNumber().toNumber() > expectedBalance)
-
 });
 
 When(/^I create a token named Test Token \(HTT\)$/, async function () {
-
+  const { accountId, privateKey } = setClientOperator(2);
+  const transaction = new TokenCreateTransaction()
+    .setDecimals(2)
+    .setTokenSymbol("HTT")
+    .setSupplyKey(privateKey)
+    .setTokenName("Test Token")
+    .setTreasuryAccountId(accountId)
+    .freezeWith(client);
+  const signTx = await transaction.sign(privateKey);
+  const txResponse = await signTx.execute(client);
+  const receipt = await txResponse.getReceipt(client);
+  const tokenIdCreated = receipt.tokenId;
+  assert.ok(tokenIdCreated != null);
+  console.log(`Token created with ID: ${tokenIdCreated}`);
+  tokenId = tokenIdCreated;
 });
 
-Then(/^The token has the name "([^"]*)"$/, async function () {
-
+Then(/^The token has the name "([^"]*)"$/, async function (tokenName: string) {
+  const tokenInfoQuery = new TokenInfoQuery().setTokenId(tokenId);
+  const tokenInfo = await tokenInfoQuery.execute(client);
+  assert(tokenInfo.name === tokenName);
 });
 
-Then(/^The token has the symbol "([^"]*)"$/, async function () {
-
+Then(/^The token has the symbol "([^"]*)"$/, async function (symbol: string) {
+  const tokenInfoQuery = new TokenInfoQuery().setTokenId(tokenId);
+  const tokenInfo = await tokenInfoQuery.execute(client);
+  assert(tokenInfo.symbol === symbol);
 });
 
 Then(/^The token has (\d+) decimals$/, async function () {
+  
 
 });
 
@@ -50,9 +94,14 @@ Then(/^The total supply of the token is (\d+)$/, async function () {
 Then(/^An attempt to mint tokens fails$/, async function () {
 
 });
-Given(/^A first hedera account with more than (\d+) hbar$/, async function () {
 
+Given(/^A first hedera account with more than (\d+) hbar$/, async function (expectedBalance: number) {
+  const { accountId, privateKey } = setClientOperator(2);
+  const query = new AccountBalanceQuery().setAccountId(accountId);
+  const balance = await query.execute(client);
+  assert.ok(balance.hbars.toBigNumber().toNumber() > expectedBalance)
 });
+
 Given(/^A second Hedera account$/, async function () {
 
 });
