@@ -338,45 +338,30 @@ Given(/^A first hedera account with more than (\d+) hbar and (\d+) HTT tokens$/,
 });
 
 Given(/^A second Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
-  // const { accountId, privateKey } = accountsManager(secondAccount);
-  // const query = new AccountBalanceQuery().setAccountId(accountId);
-  // const balance = await query.execute(client);
-  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
+  const { accountId, privateKey } = accountsManager(secondAccount);
+  const balance = await getHbarBalance(accountId);
+  assert.ok(balance > hbar);
 
-  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  // assert.ok(accountBalanceInfo.tokens != null);
-  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  // assert.ok(tokenBalance != null);
-  // assert.ok(tokenBalance.toNumber() === htt);
+  const tokenBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(tokenBalance === htt);
 });
 
 Given(/^A third Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
-  // const { accountId, privateKey } = accountsManager(3);
-  // const query = new AccountBalanceQuery().setAccountId(accountId);
-  // const balance = await query.execute(client);
-  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
+  const { accountId, privateKey } = accountsManager(thirdAccount);
+  const balance = await getHbarBalance(accountId);
+  assert.ok(balance > hbar);
 
-  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  // assert.ok(accountBalanceInfo.tokens != null);
-  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  // assert.ok(tokenBalance != null);
-  // assert.ok(tokenBalance.toNumber() === htt);
+  const tokenBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(tokenBalance === htt);
 });
 
 Given(/^A fourth Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
-  // const { accountId, privateKey } = accountsManager(2);
-  // const query = new AccountBalanceQuery().setAccountId(accountId);
-  // const balance = await query.execute(client);
-  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
+  const { accountId, privateKey } = accountsManager(fourthAccount);
+  const balance = await getHbarBalance(accountId);
+  assert.ok(balance > hbar);
 
-  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  // assert.ok(accountBalanceInfo.tokens != null);
-  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  // assert.ok(tokenBalance != null);
-  // assert.ok(tokenBalance.toNumber() === htt);
+  const tokenBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(tokenBalance === htt);
 });
 
 When(/^A transaction is created to transfer (\d+) HTT tokens out of the first and second account and (\d+) HTT tokens into the third account and (\d+) HTT tokens into the fourth account$/, async function (transferAmount: number, toThirdAccount: number, toFourthAccount: number) {
@@ -397,21 +382,13 @@ When(/^A transaction is created to transfer (\d+) HTT tokens out of the first an
 });
 
 Then(/^The third account holds (\d+) HTT tokens$/, async function (htt: number) {
-  const { accountId, privateKey } = accountsManager(3);
-  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  assert.ok(accountBalanceInfo.tokens != null);
-  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  assert.ok(tokenBalance != null);
-  assert.ok(tokenBalance.toNumber() === htt);
+  const { accountId, privateKey } = accountsManager(thirdAccount);
+  const httBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(httBalance === htt);
 });
 
 Then(/^The fourth account holds (\d+) HTT tokens$/, async function (htt: number) {
-  const { accountId, privateKey } = accountsManager(2);
-  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  assert.ok(accountBalanceInfo.tokens != null);
-  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  assert.ok(tokenBalance != null);
-  assert.ok(tokenBalance.toNumber() === htt);
+  const { accountId, privateKey } = accountsManager(fourthAccount);
+  const httBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(httBalance === htt);
 });
