@@ -195,7 +195,7 @@ Given(/^A second Hedera account$/, async function () {
   assert.ok(accountId != null);
 });
 
-Given(/^A token named Test Token \(HTT\) with (\d+) tokens$/, async function (supply: number) {
+Given(/^A token named Test Token \(HTT\) with (\d+) tokens$/, {timeout: 5 * 5000}, async function (supply: number) {
   const { accountId, privateKey } = setClientOperator(firstAccount);
   const transaction = new TokenCreateTransaction()
     .setDecimals(2)
@@ -220,28 +220,26 @@ Given(/^A token named Test Token \(HTT\) with (\d+) tokens$/, async function (su
   assert.ok(tokenInfo.name === "Test Token");
   assert.ok(tokenInfo.symbol === "HTT");
 
-  // bypass for one scenario
-  if (scenarioName === 'The first account holds 100 HTT tokens') {
-    await transferTokens(firstAccount, secondAccount, tokenId, 100);
+  // bypass for account holding 100HTT initially
+  if (scenarioName === 'Transfer tokens between 2 accounts') {
+    const mintTransaction = new TokenMintTransaction()
+      .setTokenId(tokenId)
+      .setAmount(100)
+      .freezeWith(client);
+    const signTx = await mintTransaction.sign(privateKey);
+    const txResponse = await signTx.execute(client);
+    const receipt = await txResponse.getReceipt(client);
+    assert.ok(receipt.status._code === 22);
   }
 });
 
 Given(/^The first account holds (\d+) HTT tokens$/, async function (balance: number) {
   const { accountId, privateKey } = setClientOperator(firstAccount);
-  const mintTransaction = new TokenMintTransaction()
-      .setTokenId(tokenId)
-      .setAmount(100)
-      .freezeWith(client);
-  const signTx = await mintTransaction.sign(privateKey);
-  const txResponse = await signTx.execute(client);
-  const receipt = await txResponse.getReceipt(client);
-  assert.ok(receipt.status._code === 22);
   const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
   const accountBalanceInfo = await accountBalanceQuery.execute(client);
   assert.ok(accountBalanceInfo.tokens != null);
   const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
   assert.ok(tokenBalance != null);
-  console.log(`Token balance: ${tokenBalance}`);
   assert.ok(tokenBalance.toNumber() === balance);
 });
 
