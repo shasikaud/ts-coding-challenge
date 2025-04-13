@@ -13,6 +13,9 @@ import {
   TokenMintTransaction,
   TokenSupplyType,
   TransferTransaction,
+  TransactionReceipt,
+  TransactionResponse,
+  TransactionRecord,
 } from "@hashgraph/sdk";
 import assert from "node:assert";
 
@@ -21,9 +24,14 @@ const client = Client.forTestnet();
 let scenarioName: string;
 const firstAccount = 5;
 const secondAccount = 4;
+const thirdAccount = 3;
+const fourthAccount = 2;
 let tokenId: TokenId;
 let tokenAssociateTransaction: TokenAssociateTransaction;
-let tokenTransferTransaction: TransferTransaction;
+let transferTransaction: TransferTransaction;
+let transactionResponse: TransactionResponse;
+let transactionReceipt: TransactionReceipt;
+let transactionRecord: TransactionRecord;
 
 const accountsManager = (index: number) => {
   const account = accounts[index];
@@ -53,6 +61,23 @@ const tokenInfoQuery = async () => {
   return tokenInfo;
 };
 
+const getTokenBalance = async (accountId: AccountId, tokenId: TokenId) => {
+  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  if (accountBalanceInfo.tokens === null) return 0;
+  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  if (!tokenBalance) return 0;
+  return tokenBalance.toNumber();
+};
+
+const getHbarBalance = async (accountId: AccountId) => {
+  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  if (accountBalanceInfo.hbars === null) return 0;
+  const hbarBalance = accountBalanceInfo.hbars.toBigNumber().toNumber();
+  return hbarBalance;
+};
+
 const transferTokens = async (fromAccount: number, toAccount: number, tokenId: TokenId, tokenAmount: number) => {
   const { accountId: fromAccountId, privateKey: fromAccountPrivateKey } = setClientOperator(fromAccount);
   const { accountId: toAccountId, privateKey: toAccountPrivateKey } = accountsManager(toAccount);
@@ -67,13 +92,13 @@ const transferTokens = async (fromAccount: number, toAccount: number, tokenId: T
   const tokenAssociateReceipt = await tokenAssociateTransactionResponse.getReceipt(client);
   assert.ok(tokenAssociateReceipt.status._code === 22);
 
-  const tokenTransferTransaction = new TransferTransaction()
+  const transferTransaction = new TransferTransaction()
     .addTokenTransfer(tokenId, fromAccountId, -1 * tokenAmount)
     .addTokenTransfer(tokenId, toAccountId, tokenAmount)
     .freezeWith(client);
-  const signedTokenTransferTransaction = await tokenTransferTransaction.sign(fromAccountPrivateKey);
-  const tokenTransferTransactionResponse = await signedTokenTransferTransaction.execute(client);
-  const tokenTransferReceipt = await tokenTransferTransactionResponse.getReceipt(client);
+  const signedtransferTransaction = await transferTransaction.sign(fromAccountPrivateKey);
+  const transferTransactionResponse = await signedtransferTransaction.execute(client);
+  const tokenTransferReceipt = await transferTransactionResponse.getReceipt(client);
   assert.ok(tokenTransferReceipt.status._code === 22);
 };
 
@@ -83,9 +108,8 @@ Before((scenario) => {
 
 Given(/^A Hedera account with more than (\d+) hbar$/, async function (expectedBalance: number) {
   const { accountId, privateKey } = setClientOperator(firstAccount);
-  const query = new AccountBalanceQuery().setAccountId(accountId);
-  const balance = await query.execute(client);
-  assert.ok(balance.hbars.toBigNumber().toNumber() > expectedBalance)
+  const hbarBalance = await getHbarBalance(accountId);
+  assert.ok(hbarBalance > expectedBalance);
 });
 
 When(/^I create a token named Test Token \(HTT\)$/, async function () {
@@ -168,7 +192,7 @@ Then(/^The total supply of the token is (\d+)$/, async function (maxSupply: numb
 });
 
 Then(/^An attempt to mint tokens fails$/, async function () {
-  const { accountId, privateKey } = accountsManager(5);
+  const { accountId, privateKey } = accountsManager(firstAccount);
   try {
     const mintTransaction = new TokenMintTransaction()
       .setTokenId(tokenId)
@@ -185,9 +209,8 @@ Then(/^An attempt to mint tokens fails$/, async function () {
 
 Given(/^A first hedera account with more than (\d+) hbar$/, async function (expectedBalance: number) {
   const { accountId, privateKey } = setClientOperator(firstAccount);
-  const query = new AccountBalanceQuery().setAccountId(accountId);
-  const balance = await query.execute(client);
-  assert.ok(balance.hbars.toBigNumber().toNumber() > expectedBalance)
+  const hbarBalance = await getHbarBalance(accountId);
+  assert.ok(hbarBalance > expectedBalance);
 });
 
 Given(/^A second Hedera account$/, async function () {
@@ -220,8 +243,8 @@ Given(/^A token named Test Token \(HTT\) with (\d+) tokens$/, {timeout: 5 * 5000
   assert.ok(tokenInfo.name === "Test Token");
   assert.ok(tokenInfo.symbol === "HTT");
 
-  // bypass for account holding 100HTT initially
-  if (scenarioName === 'Transfer tokens between 2 accounts') {
+  // bypass for first account holding 100HTT initially
+  if (['Transfer tokens between 2 accounts', 'Create a multi party token transfer transaction'].includes(scenarioName)) {
     const mintTransaction = new TokenMintTransaction()
       .setTokenId(tokenId)
       .setAmount(100)
@@ -231,81 +254,164 @@ Given(/^A token named Test Token \(HTT\) with (\d+) tokens$/, {timeout: 5 * 5000
     const receipt = await txResponse.getReceipt(client);
     assert.ok(receipt.status._code === 22);
   }
+
+  // bypass for second account holding 100HTT initially
+  if (scenarioName === 'Create a token transfer transaction paid for by the recipient') {
+    const mintTransaction = new TokenMintTransaction()
+      .setTokenId(tokenId)
+      .setAmount(100)
+      .freezeWith(client);
+    const signTx = await mintTransaction.sign(privateKey);
+    const txResponse = await signTx.execute(client);
+    const receipt = await txResponse.getReceipt(client);
+    assert.ok(receipt.status._code === 22);
+    await transferTokens(firstAccount, secondAccount, tokenId, 100);
+  }
+
 });
 
 Given(/^The first account holds (\d+) HTT tokens$/, async function (balance: number) {
-  const { accountId, privateKey } = setClientOperator(firstAccount);
-  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  assert.ok(accountBalanceInfo.tokens != null);
-  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  assert.ok(tokenBalance != null);
-  assert.ok(tokenBalance.toNumber() === balance);
+  const { accountId, privateKey } = accountsManager(firstAccount);
+  const httBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(httBalance === balance);
 });
 
 Given(/^The second account holds (\d+) HTT tokens$/, async function (balance: number) {
-  const { accountId, privateKey } = setClientOperator(secondAccount);
-  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
-  const accountBalanceInfo = await accountBalanceQuery.execute(client);
-  assert.ok(accountBalanceInfo.tokens != null);
-  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
-  if (balance === 0) assert.ok(!tokenBalance);
-  else assert.ok(tokenBalance?.toNumber() === balance);
+  const { accountId, privateKey } = accountsManager(secondAccount);
+  const httBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(httBalance === balance);
 });
 
 When(/^The first account creates a transaction to transfer (\d+) HTT tokens to the second account$/, async function (tokenAmount: number) {
   const { accountId: fromAccountId, privateKey: fromPrivateKey } = accountsManager(firstAccount);
   const { accountId: toAccountId, privateKey: toPrivateKey } = accountsManager(secondAccount);
-  tokenAssociateTransaction = new TokenAssociateTransaction()
-    .setAccountId(toAccountId)
-    .setTokenIds([tokenId])
-    .freezeWith(client);
-  const tokenAssociateTransactionSign = await tokenAssociateTransaction.sign(fromPrivateKey);
-  const tokenAssociateTransactionSigned = await tokenAssociateTransactionSign.execute(client);
-  const tokenAssociateReceipt = await tokenAssociateTransactionSigned.getReceipt(client);
-  assert.ok(tokenAssociateReceipt.status._code === 22);
-
-  tokenTransferTransaction = new TransferTransaction()
+  
+  transferTransaction = new TransferTransaction()
     .addTokenTransfer(tokenId, fromAccountId, -1 * tokenAmount)
     .addTokenTransfer(tokenId, toAccountId, tokenAmount)
     .freezeWith(client);
-  const tokenTransferTransactionSign = await tokenTransferTransaction.sign(fromPrivateKey);
-  const tokenTransferTransactionSigned = await tokenTransferTransactionSign.execute(client);
-  const tokenTransferReceipt = await tokenTransferTransactionSigned.getReceipt(client);
-  assert.ok(tokenTransferReceipt.status._code === 22);
+
+  const associateTransaction = new TokenAssociateTransaction()
+    .setAccountId(toAccountId)
+    .setTokenIds([tokenId])
+    .freezeWith(client);
+  const signedAssociateTransaction = await associateTransaction.sign(toPrivateKey);
+  const associateTransactionResponse = await signedAssociateTransaction.execute(client);
+  const associateTransactionReceipt = await associateTransactionResponse.getReceipt(client);
+  assert.ok(associateTransactionReceipt.status._code === 22);
+
+  transferTransaction = await transferTransaction.sign(fromPrivateKey);
 });
 
-When(/^The first account submits the transaction$/, async function () {});
+When(/^The first account submits the transaction$/, async function () {
+  transactionResponse = await transferTransaction.execute(client);
+  transactionReceipt = await transactionResponse.getReceipt(client);
+  transactionRecord = await transactionResponse.getRecord(client);
+  assert.ok(transactionReceipt.status._code === 22);
+});
 
-When(/^The second account creates a transaction to transfer (\d+) HTT tokens to the first account$/, async function () {
-
+When(/^The second account creates a transaction to transfer (\d+) HTT tokens to the first account$/, async function (tokenAmount: number) {
+  const { accountId: fromAccountId, privateKey: fromPrivateKey } = accountsManager(secondAccount);
+  const { accountId: toAccountId, privateKey: toPrivateKey } = accountsManager(firstAccount);
+  transferTransaction = new TransferTransaction()
+    .addTokenTransfer(tokenId, fromAccountId, -1 * tokenAmount)
+    .addTokenTransfer(tokenId, toAccountId, tokenAmount)
+    .freezeWith(client);
+  transferTransaction = await transferTransaction.sign(fromPrivateKey);
 });
 
 Then(/^The first account has paid for the transaction fee$/, async function () {
-  const { accountId } = accountsManager(firstAccount);
-  const paidBy = tokenTransferTransaction.transactionId?.accountId;
-  assert.ok(paidBy?.toString() === accountId.toString());
+  const { accountId: firstAccountId } = accountsManager(firstAccount);
+  const paidBy = transactionRecord.transactionId?.accountId;
+  assert.ok(paidBy != null);
+  assert.ok(paidBy.toString() === firstAccountId.toString());
 });
 
 
-// Given(/^A first hedera account with more than (\d+) hbar and (\d+) HTT tokens$/, async function () {
+Given(/^A first hedera account with more than (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
+  const { accountId, privateKey } = accountsManager(firstAccount);
+  const hbarBalance = await getHbarBalance(accountId);
+  assert.ok(hbarBalance > hbar);
 
-// });
-// Given(/^A second Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function () {
+  const httBalance = await getTokenBalance(accountId, tokenId);
+  assert.ok(httBalance === htt);
+});
 
-// });
-// Given(/^A third Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function () {
+Given(/^A second Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
+  // const { accountId, privateKey } = accountsManager(secondAccount);
+  // const query = new AccountBalanceQuery().setAccountId(accountId);
+  // const balance = await query.execute(client);
+  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
 
-// });
-// Given(/^A fourth Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function () {
+  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  // assert.ok(accountBalanceInfo.tokens != null);
+  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  // assert.ok(tokenBalance != null);
+  // assert.ok(tokenBalance.toNumber() === htt);
+});
 
-// });
-// When(/^A transaction is created to transfer (\d+) HTT tokens out of the first and second account and (\d+) HTT tokens into the third account and (\d+) HTT tokens into the fourth account$/, async function () {
+Given(/^A third Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
+  // const { accountId, privateKey } = accountsManager(3);
+  // const query = new AccountBalanceQuery().setAccountId(accountId);
+  // const balance = await query.execute(client);
+  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
 
-// });
-// Then(/^The third account holds (\d+) HTT tokens$/, async function () {
+  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  // assert.ok(accountBalanceInfo.tokens != null);
+  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  // assert.ok(tokenBalance != null);
+  // assert.ok(tokenBalance.toNumber() === htt);
+});
 
-// });
-// Then(/^The fourth account holds (\d+) HTT tokens$/, async function () {
+Given(/^A fourth Hedera account with (\d+) hbar and (\d+) HTT tokens$/, async function (hbar: number, htt: number) {
+  // const { accountId, privateKey } = accountsManager(2);
+  // const query = new AccountBalanceQuery().setAccountId(accountId);
+  // const balance = await query.execute(client);
+  // assert.ok(balance.hbars.toBigNumber().toNumber() > hbar);
 
-// });
+  // const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  // const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  // assert.ok(accountBalanceInfo.tokens != null);
+  // const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  // assert.ok(tokenBalance != null);
+  // assert.ok(tokenBalance.toNumber() === htt);
+});
+
+When(/^A transaction is created to transfer (\d+) HTT tokens out of the first and second account and (\d+) HTT tokens into the third account and (\d+) HTT tokens into the fourth account$/, async function (transferAmount: number, toThirdAccount: number, toFourthAccount: number) {
+  const { accountId: fromFirstAccountId, privateKey: fromFirstAccountPrivateKey } = accountsManager(firstAccount);
+  const { accountId: fromSecondAccountId, privateKey: fromSecondAccountPrivateKey } = accountsManager(secondAccount);
+  const { accountId: toThirdAccountId, privateKey: toThirdAccountPrivateKey } = accountsManager(3);
+  const { accountId: toFourthAccountId, privateKey: toFourthAccountPrivateKey } = accountsManager(2);
+
+  transferTransaction = new TransferTransaction()
+    .addTokenTransfer(tokenId, fromFirstAccountId, -1 * transferAmount)
+    .addTokenTransfer(tokenId, fromSecondAccountId, -1 * transferAmount)
+    .addTokenTransfer(tokenId, toThirdAccountId, toThirdAccount)
+    .addTokenTransfer(tokenId, toFourthAccountId, toFourthAccount)
+    .freezeWith(client);
+
+  transferTransaction = await transferTransaction.sign(fromFirstAccountPrivateKey);
+  transferTransaction = await transferTransaction.sign(fromSecondAccountPrivateKey);
+});
+
+Then(/^The third account holds (\d+) HTT tokens$/, async function (htt: number) {
+  const { accountId, privateKey } = accountsManager(3);
+  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  assert.ok(accountBalanceInfo.tokens != null);
+  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  assert.ok(tokenBalance != null);
+  assert.ok(tokenBalance.toNumber() === htt);
+});
+
+Then(/^The fourth account holds (\d+) HTT tokens$/, async function (htt: number) {
+  const { accountId, privateKey } = accountsManager(2);
+  const accountBalanceQuery = new AccountBalanceQuery().setAccountId(accountId);
+  const accountBalanceInfo = await accountBalanceQuery.execute(client);
+  assert.ok(accountBalanceInfo.tokens != null);
+  const tokenBalance = accountBalanceInfo.tokens?.get(tokenId);
+  assert.ok(tokenBalance != null);
+  assert.ok(tokenBalance.toNumber() === htt);
+});
